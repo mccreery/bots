@@ -1,4 +1,5 @@
-import sklearn.cluster, discord, io, config
+import sklearn.cluster, discord, io
+from config import config
 import numpy as np
 from PIL import Image
 
@@ -93,6 +94,5 @@ async def on_message(message):
         await message.channel.send(f"{proxy_member.mention}, "
             "you don't have permission to do that.")
 
-conf = config.config()
 if __name__ == "__main__":
-    client.run(conf["Tokens"]["sam"])
+    client.run(config["Tokens"]["sam"])

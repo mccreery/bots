@@ -1,6 +1,4 @@
-import configparser
+import configparser, os
 
-def config(filename="config.ini"):
-	config = configparser.ConfigParser()
-	config.read(filename)
-	return config
+config = configparser.ConfigParser()
+config.read(os.getenv("BOT_CONFIG", "config.ini"))
