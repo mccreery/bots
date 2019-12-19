@@ -1,26 +1,35 @@
 #!/usr/bin/env python3
+import discord, os, wrapper, mimetypes
+from wrapper import bot, session
+from discord.ext.commands import EmojiConverter
 
-import discord, sys, os, urllib.request, config
-client = discord.Client()
+@bot.group(invoke_without_command=True)
+async def emoji(ctx, emoji: EmojiConverter):
+    desc = f"**Name:** {emoji.name}\n**ID**: {emoji.id}\n**URL**: {emoji.url}"
 
-@client.event
-async def on_ready():
-	server_id = sys.argv[1]
-	server = client.get_server(server_id)
+    embed = discord.Embed(title=str(emoji), url=str(emoji.url),
+        image=emoji.url, description=desc)
+    await ctx.message.channel.send(embed=embed)
 
-	if not os.path.exists(server.name):
-		os.makedirs(server.name)
+@discord.ext.commands.is_owner()
+@emoji.command()
+async def save(ctx, *emojis: EmojiConverter):
+    guild = ctx.message.guild
+    if not emojis:
+        emojis = guild.emojis
 
-	for emoji in server.emojis:
-		filename = server.name + "/" + emoji.name + ".png"
-		if os.path.isfile(filename): pass
+    progress_prefix = f"Saving {len(emojis)} emojis..."
+    progress = await ctx.message.channel.send(progress_prefix)
 
-		with open(filename, "wb") as file:
-			req = urllib.request.Request(emoji.url, headers={"User-Agent": "Mozilla/5.0"})
+    for emoji in emojis:
+        head = await session.head(str(emoji.url))
+        ext = mimetypes.guess_extension(head.content_type)
 
-			with urllib.request.urlopen(req) as remote:
-				file.write(remote.read())
+        filename = f"{guild.name}/{emoji.name}{ext}"
+        await progress.edit(content=progress_prefix + " " + filename)
+        await emoji.url.save(filename)
 
-	print("Done!")
+    await progress.edit(content=progress_prefix + " Done")
 
-client.run(config.config()["Tokens"]["user"], bot=False)
+if __name__ == "__main__":
+    wrapper.run()
