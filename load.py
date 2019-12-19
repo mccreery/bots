@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
+import asyncio, discord, itertools, wrapper
 
-import discord, asyncio, config
-client = discord.Client()
-conf = config.config()
+@discord.ext.commands.is_owner()
+@wrapper.bot.command()
+async def load(ctx):
+    chars ="◜◝◞◟"
+    message = await ctx.message.channel.send(chars[-1])
 
-@client.event
-async def on_message(message):
-	if message.content == "load" and message.author.id == conf["Users"]["me"]:
-		start = 0
-		while True:
-			print("Editing to ")
-			await client.edit_message(message, chr((start & 3) | 0x25DC))
-			start += 1
-			await asyncio.sleep(.5)
+    while True:
+        for c in chars:
+            await asyncio.sleep(0.5)
+            await message.edit(content=c)
 
-client.run(conf["Tokens"]["user"], bot = False)
+if __name__ == "__main__":
+    wrapper.run()
