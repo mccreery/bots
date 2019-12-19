@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import asyncio, discord, itertools, wrapper
+import asyncio, discord, wrapper
 
 @discord.ext.commands.is_owner()
 @wrapper.bot.command()
