@@ -7,6 +7,9 @@ config.read(os.getenv("BOT_CONFIG", "config.ini"))
 bot = Bot(os.getenv("BOT_PREFIX", "!"))
 session = aiohttp.ClientSession(loop=bot.loop)
 
+def secret(section, key_or_value):
+    return config.get(section, key_or_value, fallback=key_or_value)
+
 def run(*args, **kwargs):
     # 2 possible sources for token
     if args:
@@ -17,7 +20,7 @@ def run(*args, **kwargs):
     # Only works if either of the conditions passed
     try:
         # Translate token if possible
-        token = config.get("Tokens", token, fallback=token)
+        token = secret("Tokens", token)
         args = token, *args
     except (NameError, AttributeError):
         # Either no token or token is some weird value
