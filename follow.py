@@ -1,24 +1,15 @@
 #!/usr/bin/env python3
+import discord, sys, wrapper
+from wrapper import bot
 
-import discord, random, config
+follower = wrapper.secret("Users", sys.argv[0])
+target = wrapper.secret("Users", sys.argv[1])
 
-client = discord.Client()
-server = follower = target = None
-conf = config.config()
+@bot.listen()
+async def on_voice_state_update(member, before, after):
+	if member.id == target:
+		f = await member.guild.get_member(follower)
+		await f.move_to(after.channel)
 
-@client.event
-async def on_ready():
-	global server, follower, target, channels
-
-	server = client.get_server(conf["Servers"]["jar"])
-	follower = server.get_member(conf["Users"]["me")
-	target = server.get_member(conf["Users"]["me"])
-
-	print("follower: {}\nTarget: {}\nServer: {}".format(follower, target, server))
-
-@client.event
-async def on_voice_state_update(before, after):
-	if follower.voice.voice_channel != target.voice.voice_channel:
-		await client.move_member(follower, target.voice.voice_channel)
-
-client.run(conf["Tokens"]["stephen"])
+if __name__ == "__main__":
+	wrapper.run()
