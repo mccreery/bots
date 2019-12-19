@@ -1,19 +1,15 @@
 #!/usr/bin/env python3
+import aiohttp, asyncio, discord, wrapper
+from wrapper import bot, session
 
-import discord, json, shlex, config
-client = discord.Client()
+@bot.command(aliases=("sp",))
+async def strawpoll(ctx, title, *options):
+    async with session.post("https://www.strawpoll.me/api/v2/polls",
+            json={"title": title, "options": options}) as response:
+        json = await response.json()
 
-@client.event
-async def on_message(message):
-	if message.content[0] == "$":
-		cmd = shlex.split(message.content[1:])
-		if cmd[0] == "sp" or cmd[0] == "strawpoll":
-			response = await client.http.post(
-				"https://strawpoll.me/api/v2/polls",
-				json={"title": cmd[1], "options": cmd[2:]})
+    await ctx.message.channel.send(ctx.message.author.mention +
+        ", your poll is https://www.strawpoll.me/" + str(json["id"]))
 
-			response = json.loads(response)
-			await client.send_message(message.channel,
-				"http://strawpoll.me/" + str(response["id"]))
-
-client.run(config.config()["Tokens"]["sam"])
+if __name__ == "__main__":
+    wrapper.run()
