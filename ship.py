@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
+import wrapper
+from wrapper import bot
+from discord.ext.commands import UserConverter
 
-import discord, config
-client = discord.Client()
-conf = config.config()
+@bot.command()
+async def ship(ctx, first: UserConverter, second: UserConverter):
+	first = map(ord, first.name)
+	second = map(ord, second.name)
 
-@client.event
-async def on_message(message):
-	if message.channel.id == conf["Channels"]["bot_hole"] and message.content.startswith("rate this ship pls") and len(message.mentions) >= 2:
-		a = message.mentions[0].name
-		b = message.mentions[1].name
-		rating = sum(ord(a[i])*5 | ord(b[i])*3 for i in range(min(len(a), len(b))))
+	rate = sum(a*5 | b*3 for (a, b) in zip(first, second))
+	rate %= 11
 
-		await client.send_message(message.channel, "i rate this {}/10".format(rating % 11))
+	await ctx.message.channel.send(
+		f"{ctx.message.author.mention}, I rate this {rate}/10")
 
-client.run(conf["Tokens"]["stephen"])
+if __name__ == "__main__":
+	wrapper.run()
