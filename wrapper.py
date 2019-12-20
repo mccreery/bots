@@ -1,14 +1,23 @@
-import aiohttp, configparser, os
+import aiohttp, configparser, io, os
 from discord.ext.commands import Bot
 
 config = configparser.ConfigParser()
 config.read(os.getenv("BOT_CONFIG", "config.ini"))
 
 bot = Bot(os.getenv("BOT_PREFIX", "!"))
-session = aiohttp.ClientSession(loop=bot.loop)
+
+session = None
+@bot.listen()
+async def on_ready():
+    global session
+    session = aiohttp.ClientSession(loop=bot.loop)
 
 def secret(section, key_or_value):
     return config.get(section, key_or_value, fallback=key_or_value)
+
+async def get(url, **kwargs):
+    async with session.get(url, **kwargs) as response:
+        return io.BytesIO(await response.read())
 
 def run(*args, **kwargs):
     # 2 possible sources for token
