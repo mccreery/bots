@@ -8,14 +8,16 @@ def border(image, radius, fill="black"):
     a = image.getchannel("A")
     a = np.array(a)
 
+    kernel_size = math.ceil(radius) * 2 + 1
+    kernel_center = kernel_size // 2
+
     # Convolve alpha with outline kernel
     def kernel_func(x, y):
-        d = np.sqrt((x - radius) ** 2 + (y - radius) ** 2)
+        d = np.sqrt((x - kernel_center) ** 2 + (y - kernel_center) ** 2)
         return np.clip(radius + 1 - d, 0, 1)
 
-    size = math.ceil(radius) * 2 + 1
-    kernel = np.fromfunction(kernel_func, (size, size))
-    a = scipy.signal.convolve2d(a, kernel)
+    kernel = np.fromfunction(kernel_func, (kernel_size, kernel_size))
+    a = scipy.signal.convolve2d(a, kernel, mode="same")
     a = np.clip(a, 0, 255)
     a = a[..., np.newaxis]
 
@@ -73,8 +75,8 @@ async def meme(ctx, top_text, *bottom_text):
 
     # Top text
     top_image = text_image(top_text, font=variant, fill="white", align="center")
-    top_border = border(top_image, radius=radius)
     top_image = ImageOps.expand(top_image, math.ceil(radius))
+    top_border = border(top_image, radius=radius)
 
     top_pos = ((image.width - top_image.width) // 2, padding)
     image.paste(top_border, top_pos, top_border)
@@ -82,8 +84,8 @@ async def meme(ctx, top_text, *bottom_text):
 
     # Bottom text
     bottom_image = text_image(bottom_text, font=variant, fill="white", align="center")
-    bottom_border = border(bottom_image, radius=radius)
     bottom_image = ImageOps.expand(bottom_image, math.ceil(radius))
+    bottom_border = border(bottom_image, radius=radius)
 
     bottom_pos = ((image.width - bottom_image.width) // 2, image.height - padding - bottom_image.height)
     image.paste(bottom_border, bottom_pos, bottom_border)
