@@ -1,8 +1,17 @@
 #!/usr/bin/env python3
-import discord, io, math, wrapper, scipy.signal
+import discord, io, math, wrapper, scipy.signal, urllib, os
 from wrapper import bot
 from PIL import Image, ImageFont, ImageDraw, ImageColor, ImageOps
 import numpy as np
+
+async def get_image_url(ctx):
+    async for message in ctx.history():
+        for attachment in reversed(message.attachments):
+            if attachment.width:
+                return attachment.url
+        for embed in reversed(message.embeds):
+            if embed.image:
+                return embed.image.url
 
 def border(image, radius, fill="black"):
     a = image.getchannel("A")
@@ -55,15 +64,16 @@ def match_height(font, height, text="X", *args, **kwargs):
         i += 1
 
 @bot.command()
-@discord.ext.commands.check(lambda ctx: ctx.message.attachments)
 async def meme(ctx, top_text, *bottom_text):
     bottom_text = " ".join(bottom_text)
     top_text = top_text.upper()
     bottom_text = bottom_text.upper()
 
-    f = io.BytesIO()
-    await ctx.message.attachments[0].save(f)
-    image = Image.open(f)
+    # Get last image in chat
+    url = await get_image_url(ctx)
+    filename = os.path.basename(urllib.parse.urlparse(url).path)
+    fp = await wrapper.get(url)
+    image = Image.open(fp)
 
     # Text positioning and size parameters
     font_height = image.height / 10
@@ -91,15 +101,11 @@ async def meme(ctx, top_text, *bottom_text):
     image.paste(bottom_border, bottom_pos, bottom_border)
     image.paste(bottom_image, bottom_pos, bottom_image)
 
-    # TODO less seeking
-    f.seek(0)
-    image.save(f, image.format)
-    f.seek(0)
-
-    await ctx.message.channel.send(file=discord.File(f,
-        filename=ctx.message.attachments[0].filename))
-
-    f.close()
+    fp.seek(0)
+    image.save(fp, image.format)
+    fp.seek(0)
+    await ctx.message.channel.send(file=discord.File(fp, filename=filename))
+    fp.close()
 
 if __name__ == "__main__":
     wrapper.run()
