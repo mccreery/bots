@@ -1,119 +1,103 @@
 #!/usr/bin/env python3
+import discord, io, math, wrapper, scipy.signal
+from wrapper import bot
+from PIL import Image, ImageFont, ImageDraw, ImageColor, ImageOps
+import numpy as np
 
-from PIL import Image, ImageFont, ImageDraw, ImageColor
-import discord, io, re, shlex, config
-client = discord.Client()
+def border(image, radius, fill="black"):
+    a = image.getchannel("A")
+    a = np.array(a)
 
-IMPACT = ImageFont.truetype(r"C:\Windows\Fonts\impact.ttf", 30)
-ARIAL  = ImageFont.truetype(r"C:\Windows\Fonts\arial.ttf", 10)
-TRANSPARENT = (0, 0, 0, 0)
-TILE = 64
+    # Convolve alpha with outline kernel
+    def kernel_func(x, y):
+        d = np.sqrt((x - radius) ** 2 + (y - radius) ** 2)
+        return np.clip(radius + 1 - d, 0, 1)
 
-def caption(draw, xy, text, **options):
-	options["fill"] = "white"
-	size = options["font"].getsize(text)
-	padding = int((size[1] / 5) + 0.5)
+    size = math.ceil(radius) * 2 + 1
+    kernel = np.fromfunction(kernel_func, (size, size))
+    a = scipy.signal.convolve2d(a, kernel)
+    a = np.clip(a, 0, 255)
+    a = a[..., np.newaxis]
 
-	bounds = (
-		xy[0] - padding, xy[1] - padding,
-		xy[0] + size[0] + padding, xy[1] + size[1] + padding
-	)
-	draw.rectangle(bounds, fill=(0, 0, 0, 95))
-	draw.text(xy, text, **options)
+    # Use fill as RGB channels
+    fill = np.asarray(ImageColor.getrgb(fill))
+    rgb = np.broadcast_to(fill, a.shape[:2] + fill.shape)
 
-async def send_image(destination, image, *, filename=None, content=None, tts=False):
-	file = io.BytesIO()
-	image.save(file, "png")
-	file.seek(0)
-	await client.send_file(destination, file, filename=filename)
-	file.close()
+    rgba = np.concatenate((rgb, a), axis=2)
+    rgba = np.uint8(rgba)
+    border = Image.fromarray(rgba, "RGBA")
+    return border
 
-@client.event
-async def on_ready():
-	global mention_bang
-	mention_bang = client.user.mention[:2] + '!' + client.user.mention[2:]
+def text_image(text, **kwargs):
+    size_kwargs = {k: v for k, v in kwargs.items() if k in [
+        "font", "spacing", "direction",
+        "features", "language", "stroke_width"]}
 
-def draw_text(draw, text, x, y):
-	draw.text((x,   y),   text, font=IMPACT, fill="black")
-	draw.text((x+2, y),   text, font=IMPACT, fill="black")
-	draw.text((x,   y+2), text, font=IMPACT, fill="black")
-	draw.text((x+2, y+2), text, font=IMPACT, fill="black")
-	draw.text((x+1, y+1), text, font=IMPACT, fill="white")
+    # Get size of text
+    image = Image.new("RGBA", (1,1))
+    draw = ImageDraw.Draw(image)
+    size = draw.textsize(text, **size_kwargs)
 
-@client.event
-async def on_message(message):
-	if client.user.mentioned_in(message):
-		if message.content.startswith(client.user.mention):
-			command = message.content[len(client.user.mention):].strip()
-		elif message.content.startswith(mention_bang):
-			command = message.content[len(mention_bang):].strip()
-		else: return
+    # Draw text on correctly sized image
+    image = Image.new("RGBA", size)
+    draw = ImageDraw.Draw(image)
+    draw.text((0, 0), text, **kwargs)
+    return image
 
-		if not command: return
-		command = shlex.split(command)
-		test = command[0].upper()
+def match_height(font, height, text="X", *args, **kwargs):
+    i = 1
+    while True:
+        variant = font.font_variant(size=i)
+        if variant.getsize(text, *args, **kwargs)[1] >= height:
+            return variant
+        i += 1
 
-		print(message.author, command)
+@bot.command()
+@discord.ext.commands.check(lambda ctx: ctx.message.attachments)
+async def meme(ctx, top_text, *bottom_text):
+    bottom_text = " ".join(bottom_text)
+    top_text = top_text.upper()
+    bottom_text = bottom_text.upper()
 
-		if test == "MEME":
-			await client.delete_message(message)
-			text = ' '.join(command[1:]).upper().splitlines()
+    f = io.BytesIO()
+    await ctx.message.attachments[0].save(f)
+    image = Image.open(f)
 
-			line_height = IMPACT.getsize(text[0])[1]
-			height = len(text) * line_height
-			width = 0
-			for line in text:
-				line_width = IMPACT.getsize(line)[0]
-				if line_width > width:
-					width = line_width
+    # Text positioning and size parameters
+    font_height = image.height / 10
+    radius = font_height / 15
+    padding = image.height // 30
 
-			y = 2
-			size = (width + 4, height + 4)
-			image = Image.new("RGBA", size, TRANSPARENT)
-			draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype("impact.ttf")
+    variant = match_height(font, font_height)
 
-			for line in text:
-				draw_text(draw, line, 2, y)
-				y += line_height
+    # Top text
+    top_image = text_image(top_text, font=variant, fill="white", align="center")
+    top_border = border(top_image, radius=radius)
+    top_image = ImageOps.expand(top_image, math.ceil(radius))
 
-			await send_image(message.channel, image, filename=text[0] + ".png")
-		elif test == "GRADIENT":
-			print(command)
-			if len(command) >= 4:
-				try:
-					start = ImageColor.getrgb(command[1])
-					end = ImageColor.getrgb(command[2])
-					stops = int(command[3])
+    top_pos = ((image.width - top_image.width) // 2, padding)
+    image.paste(top_border, top_pos, top_border)
+    image.paste(top_image, top_pos, top_image)
 
-					inc = 1 / (stops - 1) if stops != 1 else 0
-					fac = 0
+    # Bottom text
+    bottom_image = text_image(bottom_text, font=variant, fill="white", align="center")
+    bottom_border = border(bottom_image, radius=radius)
+    bottom_image = ImageOps.expand(bottom_image, math.ceil(radius))
 
-					colors = []
-					for i in range(stops):
-						print(len(start))
-						stop = tuple(
-							int(round(end[i] * fac + start[i] * (1 - fac))) \
-							for i in range(len(start))
-						)
-						print(fac)
-						colors.append(stop)
+    bottom_pos = ((image.width - bottom_image.width) // 2, image.height - padding - bottom_image.height)
+    image.paste(bottom_border, bottom_pos, bottom_border)
+    image.paste(bottom_image, bottom_pos, bottom_image)
 
-						fac += inc
+    # TODO less seeking
+    f.seek(0)
+    image.save(f, image.format)
+    f.seek(0)
 
-					image = Image.new("RGB", (TILE * stops, TILE), TRANSPARENT)
-					draw = ImageDraw.Draw(image, "RGBA")
+    await ctx.message.channel.send(file=discord.File(f,
+        filename=ctx.message.attachments[0].filename))
 
-					x = 0
-					for color in colors:
-						print(color)
-						draw.rectangle((x, 0, x + TILE, TILE), fill=color)
-						text = "#{0:02x}{1:02x}{2:02x}".format(*color)
-						text_size = ARIAL.getsize(text)
-						caption(draw, (x + (TILE - text_size[0]) / 2, (TILE - text_size[1]) / 2), text, font=ARIAL)
-						x += TILE
+    f.close()
 
-					await send_image(message.channel, image, filename="gradient.png")
-				except ValueError:
-					await client.send_message(message.channel, "Invalid parameters.")
-
-client.run(config.config()["Tokens"]["user"], bot=False)
+if __name__ == "__main__":
+    wrapper.run()
