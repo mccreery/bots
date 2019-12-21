@@ -1,4 +1,4 @@
-import aiohttp, configparser, io, os
+import aiohttp, configparser, functools, io, os
 from discord.ext.commands import Bot
 
 config = configparser.ConfigParser()
@@ -18,6 +18,14 @@ def secret(section, key_or_value):
 async def get(url, **kwargs):
     async with session.get(url, **kwargs) as response:
         return io.BytesIO(await response.read())
+
+def typing(coro):
+    @functools.wraps(coro)
+    async def wrapper_function(ctx, *args, **kwargs):
+        async with ctx.typing():
+            await coro(ctx, *args, **kwargs)
+
+    return wrapper_function
 
 def run(*args, **kwargs):
     # 2 possible sources for token

@@ -64,6 +64,7 @@ def match_height(font, height, text="X", *args, **kwargs):
         i += 1
 
 @bot.command()
+@wrapper.typing
 async def meme(ctx, top_text, *bottom_text):
     bottom_text = " ".join(bottom_text)
     top_text = top_text.upper()
