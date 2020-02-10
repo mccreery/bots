@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import discord, io, math, wrapper, scipy.signal, urllib, os
+import discord, io, math, wrapper, scipy.ndimage, urllib, os
 from wrapper import bot
 from PIL import Image, ImageFont, ImageDraw, ImageColor, ImageOps
 import numpy as np
@@ -13,31 +13,30 @@ async def get_image_url(ctx):
             if embed.image:
                 return embed.image.url
 
-def border(image, radius, fill="black"):
+def domain_circle(radius):
+    shape = radius * 2 + 1
+    shape = shape, shape
+
+    image = Image.new("1", shape)
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((0, 0) + shape, "white")
+
+    return np.array(image)
+
+def border_image(image, radius, fill="black"):
+    # Alpha composite the constant fill color beneath the image
+    border_image = Image.new(image.mode, image.size, fill)
+    border_image.alpha_composite(image)
+
+    # Alpha channel is put through a max filter with a circular domain
     a = image.getchannel("A")
+    a_mode = a.mode
     a = np.array(a)
+    a = scipy.ndimage.maximum_filter(a, footprint=domain_circle(radius))
+    a = Image.fromarray(a, a_mode)
 
-    kernel_size = math.ceil(radius) * 2 + 1
-    kernel_center = kernel_size // 2
-
-    # Convolve alpha with outline kernel
-    def kernel_func(x, y):
-        d = np.sqrt((x - kernel_center) ** 2 + (y - kernel_center) ** 2)
-        return np.clip(radius + 1 - d, 0, 1)
-
-    kernel = np.fromfunction(kernel_func, (kernel_size, kernel_size))
-    a = scipy.signal.convolve2d(a, kernel, mode="same")
-    a = np.clip(a, 0, 255)
-    a = a[..., np.newaxis]
-
-    # Use fill as RGB channels
-    fill = np.asarray(ImageColor.getrgb(fill))
-    rgb = np.broadcast_to(fill, a.shape[:2] + fill.shape)
-
-    rgba = np.concatenate((rgb, a), axis=2)
-    rgba = np.uint8(rgba)
-    border = Image.fromarray(rgba, "RGBA")
-    return border
+    border_image.putalpha(a)
+    return border_image
 
 def text_image(text, **kwargs):
     size_kwargs = {k: v for k, v in kwargs.items() if k in [
@@ -63,44 +62,69 @@ def match_height(font, height, text="X", *args, **kwargs):
             return variant
         i += 1
 
+def meme_text_image(text, font, radius):
+    image = text_image(text, font=font, fill="white", align="center")
+    image = ImageOps.expand(image, radius)
+    image = border_image(image, radius=radius)
+
+    return image
+
+def meme_image(image, top_text, bottom_text):
+    in_format = image.format
+
+    # Text positioning and size parameters
+    font_height = image.height / 10
+    radius = int(font_height // 15)
+    padding = image.height // 30
+
+    font = ImageFont.truetype("impact.ttf")
+    font = match_height(font, font_height)
+
+    image = image.convert("RGBA")
+    overlay = Image.new("RGBA", image.size)
+
+    # Top text
+    top_text_image = meme_text_image(top_text, font, radius)
+    top_text_pos = ((image.width - top_text_image.width) // 2, padding)
+    overlay.paste(top_text_image, top_text_pos)
+
+    # Bottom text
+    bottom_text_image = meme_text_image(bottom_text, font, radius)
+    bottom_text_pos = ((image.width - bottom_text_image.width) // 2, image.height - padding - bottom_text_image.height)
+    overlay.paste(bottom_text_image, bottom_text_pos)
+
+    image = Image.alpha_composite(image, overlay)
+    image.format = in_format
+    return image
+
+def limit_size(image, size=1024):
+    ratio = image.width / image.height
+
+    if image.width > size and image.width >= image.height:
+        image = image.resize((size, round(size / ratio)))
+    elif image.height > size and image.height >= image.width:
+        image = image.resize((round(size * ratio), size))
+    return image
+
 @bot.command()
 @wrapper.typing
 async def meme(ctx, top_text, *bottom_text):
-    bottom_text = " ".join(bottom_text)
     top_text = top_text.upper()
-    bottom_text = bottom_text.upper()
+    bottom_text = " ".join(bottom_text).upper()
 
     # Get last image in chat
     url = await get_image_url(ctx)
+
+    if not url:
+        await ctx.message.channel.send("Missing image")
+        return
+
     filename = os.path.basename(urllib.parse.urlparse(url).path)
     fp = await wrapper.get(url)
     image = Image.open(fp)
 
-    # Text positioning and size parameters
-    font_height = image.height / 10
-    radius = font_height / 15
-    padding = image.height // 30
-
-    font = ImageFont.truetype("impact.ttf")
-    variant = match_height(font, font_height)
-
-    # Top text
-    top_image = text_image(top_text, font=variant, fill="white", align="center")
-    top_image = ImageOps.expand(top_image, math.ceil(radius))
-    top_border = border(top_image, radius=radius)
-
-    top_pos = ((image.width - top_image.width) // 2, padding)
-    image.paste(top_border, top_pos, top_border)
-    image.paste(top_image, top_pos, top_image)
-
-    # Bottom text
-    bottom_image = text_image(bottom_text, font=variant, fill="white", align="center")
-    bottom_image = ImageOps.expand(bottom_image, math.ceil(radius))
-    bottom_border = border(bottom_image, radius=radius)
-
-    bottom_pos = ((image.width - bottom_image.width) // 2, image.height - padding - bottom_image.height)
-    image.paste(bottom_border, bottom_pos, bottom_border)
-    image.paste(bottom_image, bottom_pos, bottom_image)
+    image = limit_size(image)
+    image = meme_image(image, top_text, bottom_text)
 
     fp.seek(0)
     image.save(fp, image.format)
