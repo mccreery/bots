@@ -3,7 +3,7 @@ async-timeout==3.0.1
 attrs==19.3.0
 chardet==3.0.4
 discord.py==1.2.5
-idna==2.8
+idna==3.7
 joblib==1.2.0
 multidict==4.7.1
 numpy==1.22.0
